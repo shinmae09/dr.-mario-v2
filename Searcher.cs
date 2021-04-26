@@ -38,15 +38,7 @@ namespace DrMarioPlayer
                         LockedPills.Add(pill);
                     }
                 }
-                else if (pill.Orientation == Orientation.REVERSE_VERTICAL)
-                {
-                    if ( pill.Position.Y == 1 
-                        || gameBoard[pill.Position.X, pill.Position.Y - 2] != Tile.NONE)
-                    {
-                        LockedPills.Add(pill);
-                    }
-                }
-                else //Orientation.VERTICAL
+                else //Orientation.VERTICAL or Orientation.REVERSE_VERTICAL
                 {
                     if ( pill.Position.Y == 0 
                         || gameBoard[pill.Position.X, pill.Position.Y - 1] != Tile.NONE)
@@ -72,16 +64,7 @@ namespace DrMarioPlayer
                         EnqueuePill(pill, Move.ROTATE_90);
                     }
                 }
-                else if (pill.Orientation == Orientation.REVERSE_VERTICAL)
-                {
-                    if ( pill.Position.X == Config.Environment.WIDTH - 1 
-                        || ( pill.Position.Y > 0
-                        && gameBoard[pill.Position.X + 1, pill.Position.Y - 1] == Tile.NONE ))
-                    {
-                        EnqueuePill(pill, Move.ROTATE_90);
-                    }
-                }
-                else if (pill.Orientation == Orientation.VERTICAL)
+                else if (pill.Orientation == Orientation.VERTICAL || pill.Orientation == Orientation.REVERSE_VERTICAL)
                 {
                     if (pill.Position.X == Config.Environment.WIDTH - 1 
                         || gameBoard[pill.Position.X + 1, pill.Position.Y] == Tile.NONE)
@@ -133,19 +116,10 @@ namespace DrMarioPlayer
                     return;
                 }
             }
-            else if (pill.Orientation == Orientation.VERTICAL)
+            else if (pill.Orientation == Orientation.VERTICAL || pill.Orientation == Orientation.REVERSE_VERTICAL)
             {
                 if ( pill.Position.Y < Config.Environment.HEIGHT - 1 
                     && gameBoard[pill.Position.X, pill.Position.Y + 1] != Tile.NONE)
-                {
-                    return;
-                }
-            }
-            else //Orientation.REVERSE_VERTICAL
-            {
-                if ( pill.Position.Y == 0 
-                    || ( pill.Position.Y > 0
-                    && gameBoard[pill.Position.X, pill.Position.Y - 1] != Tile.NONE))
                 {
                     return;
                 }
@@ -170,51 +144,6 @@ namespace DrMarioPlayer
         {
             string key = $"{row}-{col}-{orientation}";
             return moveSet.ContainsKey(key);
-        }
-
-        public List<Move> GetSpecialMoveSet(int row, int col, Orientation orientation)
-        {
-            List<Move> moves = new List<Move>();
-
-            int x = row;
-            int y = col;
-            Orientation o = orientation;
-
-            while (moveSet.TryGetValue($"{x}-{y}-{o}", out Move move))
-            {
-                moves.Add(move);
-
-                switch (move)
-                {
-                    case Move.LEFT:
-                        x++;
-                        break;
-
-                    case Move.RIGHT:
-                        x--;
-                        break;
-
-                    case Move.DOWN:
-                        y++;
-                        break;
-
-                    case Move.ROTATE_90:
-                        o = OrientationHelper.Rotate(o, 3);
-                        if (!moveSet.ContainsKey(($"{x}-{y}-{o}")))
-                        {
-                            x++;
-                        }
-
-                        break;
-                }
-
-                if (x == 3 && y == 12 && o == Orientation.HORIZONTAL)
-                {
-                    break;
-                }
-            }
-
-            return moves;
         }
 
         public List<Move> GetMoveSet(int row, int col, Orientation orientation)
@@ -244,6 +173,10 @@ namespace DrMarioPlayer
                         break;
 
                     case Move.ROTATE_90:
+                        if (o == Orientation.REVERSE_VERTICAL)
+                        {
+                            y++;
+                        }
                         o = OrientationHelper.Rotate(o, 3);
                         if (!moveSet.ContainsKey(($"{x}-{y}-{o}")))
                         {

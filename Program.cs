@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DrMarioPlayer
@@ -18,12 +19,13 @@ namespace DrMarioPlayer
     {
         private static readonly IClient _client = new ClientService();
         private static TcpClient socketConnection;
-        private static bool firstRun = true;
         private static Tile[,] gameBoard = new Tile[Config.Environment.WIDTH, Config.Environment.HEIGHT];
         private static Partner[,] partnerBoard = new Partner[Config.Environment.WIDTH, Config.Environment.HEIGHT];
         private static Pill previousPill;
         private static Pill currentPill;
         private static Pill nextPill;
+        private static bool firstRun = true;
+        private static bool goodToGo = true;
 
         private static async Task Main(string[] args)
         {
@@ -43,12 +45,9 @@ namespace DrMarioPlayer
                     string message = await _client.ReceiveMessage(socketConnection);
                     if (!String.IsNullOrEmpty(message))
                     {
+                        goodToGo = true;
                         Task.Run(() => UpdateGameState(message));
                     }
-                    
-                    //var mes = Console.ReadLine();
-                    //_client.SendMessage(socketConnection, mes);
-
                 }
                 catch (Exception e)
                 {
@@ -68,20 +67,14 @@ namespace DrMarioPlayer
             {
                 previousPill = currentPill;
                 Log.Information("Server message : " + message);
-                Parallel.For(0, gameBoard.GetLength(0), (row) =>
+                for (int row = 0; row < gameBoard.GetLength(0); row++)
                 {
-                    Parallel.For(0, gameBoard.GetLength(1), (col) =>
+                    for (int col = 0; col < gameBoard.GetLength(1); col++)
                     {
-                        //Only on first run and Differences
                         Tile tile = TileConverter.Convert(board[row, col]);
-                        if (firstRun)
-                        {
-                            gameBoard[row, col] = tile;
-                        }
-
                         if (tile != gameBoard[row, col])
                         {
-                            if (!IsSpawnPoint(row, col))
+                            if (!IsSpawnPoint(row, col) && !firstRun)
                             {
                                 Log.Information(gameBoard.LogGameBoard());
                             }
@@ -89,11 +82,12 @@ namespace DrMarioPlayer
                             gameBoard[row, col] = tile;
                             partnerBoard[row, col] = Partner.NONE;
                         }
-                    });
-                });
+                    }
+                }
 
                 try
                 {
+                    firstRun = false;
                     SearchForBestMove(currentPill, nextPill);
                 }
                 catch (Exception e)
@@ -106,11 +100,6 @@ namespace DrMarioPlayer
 
         private static void SearchForBestMove(Pill currentPill, Pill nextPill)
         {
-            if (currentPill.Color1 == Color.WHITE)
-            {
-                gameBoard[3, 12] = Tile.NONE;
-                gameBoard[4, 12] = Tile.NONE;
-            }
             gameBoard[3, 13] = Tile.NONE;
             gameBoard[4, 13] = Tile.NONE;
 
@@ -120,65 +109,78 @@ namespace DrMarioPlayer
             var boardScores = new ConcurrentDictionary<Tuple<Tile[,], Partner[,]>, double>();
             var firstPillGameBoards = Simulator.LockPills(gameBoard, partnerBoard, searcher.LockedPills);
 
-            Parallel.ForEach(firstPillGameBoards.Values, (board) =>
+            if (currentPill.Color1 != Color.WHITE)
             {
-                Searcher nextPillSearcher = new Searcher(board.Item1);
-                nextPillSearcher.Search(nextPill.Clone());
-
-                var nextPillGameBoards = Simulator.LockPills(board.Item1, board.Item2, nextPillSearcher.LockedPills);
-                ConcurrentBag<double> scores = new ConcurrentBag<double>();
-
-                Parallel.ForEach(nextPillGameBoards.Values, (board2) =>
+                Parallel.ForEach(firstPillGameBoards.Values, (board) =>
                 {
-                    double score = Evaluator.Evaluate(board2.Item1);
-                    scores.Add(score);
+                    Searcher nextPillSearcher = new Searcher(board.Item1);
+                    nextPillSearcher.Search(nextPill.Clone());
+
+                    var nextPillGameBoards = Simulator.LockPills(board.Item1, board.Item2, nextPillSearcher.LockedPills);
+                    ConcurrentBag<double> scores = new ConcurrentBag<double>();
+
+                    Parallel.ForEach(nextPillGameBoards.Values, (board2) =>
+                    {
+                        double score = Evaluator.Evaluate(board2.Item1);
+                        scores.Add(score);
+                    });
+
+                    boardScores.TryAdd(board, scores.Max());
                 });
-
-                boardScores.TryAdd(board, scores.Max());
-            });
-            var bestBoard = boardScores.Aggregate((x, y) => x.Value > y.Value ? x : y).Key;
-            var bestPill = firstPillGameBoards.Where(x => x.Value == bestBoard).FirstOrDefault().Key;
-            
-            gameBoard = bestBoard.Item1;
-            partnerBoard = bestBoard.Item2;
-
-            List<Move> moves;
-            if (bestPill.Color1 != Color.WHITE)
-            {
-                moves = searcher.GetMoveSet(bestPill.Position.X, bestPill.Position.Y, bestPill.Orientation);
             }
             else
             {
-                moves = searcher.GetSpecialMoveSet(bestPill.Position.X, bestPill.Position.Y, bestPill.Orientation);
+                Parallel.ForEach(firstPillGameBoards.Values, (board) =>
+                {
+                    double score = Evaluator.Evaluate(board.Item1);
+                    boardScores.TryAdd(board, score);
+                });
             }
+            
+            var bestBoard = boardScores.Aggregate((x, y) => x.Value > y.Value ? x : y).Key;
+            var bestPill = firstPillGameBoards.Where(x => x.Value == bestBoard).FirstOrDefault().Key;
+
+            gameBoard = bestBoard.Item1;
+            partnerBoard = bestBoard.Item2;
+
+            List<Move> moves = searcher.GetMoveSet(bestPill.Position.X, bestPill.Position.Y, bestPill.Orientation);
+            string movesToBeSent = string.Empty;
             var simpMoves = new List<string>();
             for (int i = moves.Count - 1; i >= 0; i--)
             {
-                string mes = "";
-
                 switch (moves[i])
                 {
-                    case Move.DOWN: mes = "D"; break;
-                    case Move.RIGHT: mes = "R"; break;
-                    case Move.LEFT: mes = "L"; break;
-                    case Move.ROTATE_90: mes = "F"; break;
-                    case Move.ROTATE_180: mes = "FF"; break;
-                    case Move.ROTATE_270: mes = "FFF"; break;
+                    case Move.DOWN: movesToBeSent += "D"; break;
+                    case Move.RIGHT: movesToBeSent += "R"; break;
+                    case Move.LEFT: movesToBeSent += "L"; break;
+                    case Move.ROTATE_90: movesToBeSent += "F"; break;
                 }
 
-                if (firstRun)
+                if (movesToBeSent.Length == 1 || i == 0)
                 {
-                    Task.Delay(50).GetAwaiter().GetResult();
-                    firstRun = false;
+                    while (!goodToGo)
+                    {
+                        Task.Delay(10).GetAwaiter().GetResult();
+                    }
+
+                    int downMoves = movesToBeSent.Count(m => m == 'D');
+                    if (downMoves > 0)
+                    {
+                        goodToGo = false;
+                    }
+
+                    _client.SendMessage(socketConnection, movesToBeSent);
+                    simpMoves.Add(movesToBeSent);
+                    
+                    if (downMoves == 0)
+                    {
+                        Task.Delay(30).GetAwaiter().GetResult();
+                    }
+                    
+                    
+                    movesToBeSent = string.Empty;
                 }
-
-                Task.Delay(10).GetAwaiter().GetResult();
-                _client.SendMessage(socketConnection, mes);
-                simpMoves.Add(mes);
-                //Console.WriteLine("My Move: " + mes);
             }
-
-            
 
             if (bestPill.Orientation == Orientation.HORIZONTAL)
             {
@@ -212,15 +214,18 @@ namespace DrMarioPlayer
         private static bool IsSpawnPoint(int x, int y)
         {
             return (x == 3 && y == 13)
-                || (x == 4 && y == 13)
-                || (x == 3 && y == 12)
-                || (x == 4 && y == 12);
+                || (x == 4 && y == 13);
         }
         
         private static void InitializeLogger()
         {
+            if (File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log2.txt")))
+            {
+                File.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log2.txt"));
+            }
+
             var log = new LoggerConfiguration().WriteTo.File(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log.txt"))
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log3.txt"))
                 .CreateLogger();
 
             Log.Logger = log;

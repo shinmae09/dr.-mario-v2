@@ -13,9 +13,8 @@ namespace DrMarioPlayer
         {
             Dictionary<Pill, Tuple<Tile[,], Partner[,]>> gameBoards = new Dictionary<Pill, Tuple<Tile[,], Partner[,]>>();
 
-            //Parallel.ForEach(pills, (pill) =>
             foreach (var pill in pills)
-            {
+            {            
                 Tile[,] gameBoard = (Tile[,])board.Clone();
                 Partner[,] partnerBoard = (Partner[,])partner.Clone();
 
@@ -46,8 +45,8 @@ namespace DrMarioPlayer
                         break;
 
                     case Orientation.REVERSE_VERTICAL:
-                        gameBoard[pill.Position.X, pill.Position.Y] = tile1;
-                        gameBoard[pill.Position.X, pill.Position.Y - 1] = tile2;
+                        gameBoard[pill.Position.X, pill.Position.Y] = tile2;
+                        gameBoard[pill.Position.X, pill.Position.Y + 1] = tile1;
                         break;
                 }
 
