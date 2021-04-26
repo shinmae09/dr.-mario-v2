@@ -6,7 +6,6 @@ namespace DrMarioPlayer.Model
     internal class Pill
     {
         private static readonly Position SPAWN_POSITION = new Position(3, 13);
-        private static readonly Position SPECIAL_SPAWN_POSITION = new Position(3, 12);
         private static readonly Orientation DEFAULT_ORIENTATION = Orientation.HORIZONTAL;
 
         public Color? Color1 { get; set; }
@@ -24,10 +23,6 @@ namespace DrMarioPlayer.Model
         {
             Color1 = ColorConverter.Convert(colorCode[0]);
             Color2 = ColorConverter.Convert(colorCode[1]);
-            if (Color1 == Color.WHITE)
-            {
-                Position = SPECIAL_SPAWN_POSITION;
-            }
         }
 
         public Pill Move(Move move)
@@ -49,6 +44,10 @@ namespace DrMarioPlayer.Model
 
                 case Model.Move.ROTATE_90:
                     pill.Orientation = OrientationHelper.Rotate(pill.Orientation, 1);
+                    if (pill.Orientation == Orientation.REVERSE_VERTICAL)
+                    {
+                        pill.Position.Y -= 1;
+                    }
                     break;
 
                 case Model.Move.ROTATE_180:
