@@ -18,13 +18,13 @@ namespace DrMarioPlayer
             }
             else
             {
-                return 10.0 * virusScore
+                return 100.0 * virusScore
                 + measureTiles(gameBoard)
-                //+ measureStackHeight(gameBoard)
+                + measureStackHeight(gameBoard)
                 + measureChangeInColors(gameBoard)
                 + measureVirusProximity(gameBoard)
-                + measureBlockings(gameBoard)
-                + measureHeight(gameBoard);
+                + measureBlockings(gameBoard);
+                //+ measureHeight(gameBoard);
             }
         }
 
@@ -178,7 +178,7 @@ namespace DrMarioPlayer
                                     if (scanTileColor == virusColor)
                                     {
                                         int dist = iCol - col;
-                                        totalVirusProximity += (maxDistance - dist * dist) * Config.Environment.WIDTH + 10;
+                                        totalVirusProximity += (maxDistance - dist * dist) * Config.Environment.WIDTH;
                                     }
                                 }
                                 else
@@ -197,31 +197,30 @@ namespace DrMarioPlayer
                 return 1.0;
             }
 
-            return totalVirusProximity / (18910.0 * totalViruses);
+            return totalVirusProximity / (19840.0 * totalViruses);
             //return totalVirusProximity / (18910.0 * totalViruses);
             //return totalVirusProximity / (17360.0 * totalViruses);
             //return totalVirusProximity / (19840.0 * totalViruses);
         }
 
-        private static double measureBlockings(Tile[,] gameBoard)
+        private static double measureBlockings(Tile[,] gameboard)
         {
             double totalArea = (Config.Environment.HEIGHT * Config.Environment.WIDTH);
             double totalBlockings = 0.0;
-            for (int row = 0; row < gameBoard.GetLength(0); row++)
+            for (int row = 0; row < gameboard.GetLength(0); row++)
             {
-                for (int col = 0; col < gameBoard.GetLength(1); col++)
+                for(int col = 0; col < gameboard.GetLength(1); col++)
                 {
-                    Tile tile = gameBoard[row, col];
-                    if (TileHelper.IsVirus(tile))
+                    Tile tile = gameboard[row, col];
+                    if(TileHelper.IsVirus(tile))
                     {
                         Color lastColor = ColorConverter.Convert(tile).Value;
-                        int colorStreak = 0;
-                        for (int iCol = col + 1; iCol < Config.Environment.HEIGHT; iCol++)
+                        for(int iCol = col + 1; iCol < Config.Environment.HEIGHT; iCol++)
                         {
-                            Tile topTile = gameBoard[row, iCol];
-                            if (topTile != Tile.NONE)
+                            Tile topTile = gameboard[row, iCol];
+                            if(topTile != Tile.NONE)
                             {
-                                if (TileHelper.IsVirus(topTile))
+                                if(TileHelper.IsVirus(topTile))
                                 {
                                     break;
                                 }
@@ -232,27 +231,14 @@ namespace DrMarioPlayer
                                     {
                                         totalBlockings += 14;
                                         lastColor = topTileColor;
-                                        colorStreak = 1;
                                     }
                                     else
                                     {
-                                        if (gameBoard[row, iCol - 1] == Tile.NONE && colorStreak > 1)
-                                        {
-                                            totalBlockings += 14;
-                                            colorStreak = 1;
-                                        }
-                                        else
-                                        {
-                                            colorStreak++;
-                                        }
+                                        totalBlockings -= 3;
+                                        lastColor = topTileColor;
                                     }
                                 }
                             }
-                        }
-
-                        if (colorStreak > 1 && colorStreak < 4)
-                        {
-                            totalBlockings -= 3.5 * colorStreak;
                         }
                     }
                 }
