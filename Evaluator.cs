@@ -7,16 +7,25 @@ namespace DrMarioPlayer
 {
     internal static class Evaluator
     {
+        private static readonly double CLEARED_SCORE = 999999.99;
+
         public static double Evaluate(Tile[,] gameBoard)
         {
-            return 100.0 * measureViruses(gameBoard)
+            double virusScore = measureViruses(gameBoard);
+            if (virusScore == CLEARED_SCORE)
+            {
+                return CLEARED_SCORE;
+            }
+            else
+            {
+                return 10.0 * virusScore
                 + measureTiles(gameBoard)
                 //+ measureStackHeight(gameBoard)
                 + measureChangeInColors(gameBoard)
                 + measureVirusProximity(gameBoard)
                 + measureBlockings(gameBoard)
                 + measureHeight(gameBoard);
-
+            }
         }
 
         private static double measureTiles(Tile[,] gameBoard)
@@ -52,7 +61,7 @@ namespace DrMarioPlayer
                 }
             }
 
-            return (totalArea - totalViruses) / totalArea;
+            return totalViruses == 0 ? CLEARED_SCORE : (totalArea - totalViruses) / totalArea;
         }
 
         private static double measureChangeInColors(Tile[,] gameBoard)
@@ -114,7 +123,7 @@ namespace DrMarioPlayer
                     {
                         totalStackHeight += 28;
                     }
-                    
+
                 }
             }
 
@@ -148,7 +157,7 @@ namespace DrMarioPlayer
                                     {
                                         int dist = iRow - row;
                                         totalVirusProximity += (maxDistance - dist * dist) * Config.Environment.WIDTH;
-                                    }                   
+                                    }
                                 }
                                 else
                                 {
@@ -188,7 +197,7 @@ namespace DrMarioPlayer
                 return 1.0;
             }
 
-            return totalVirusProximity / (19840.0 * totalViruses);
+            return totalVirusProximity / (18910.0 * totalViruses);
             //return totalVirusProximity / (18910.0 * totalViruses);
             //return totalVirusProximity / (17360.0 * totalViruses);
             //return totalVirusProximity / (19840.0 * totalViruses);

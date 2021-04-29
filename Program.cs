@@ -1,6 +1,5 @@
 ﻿using DrMarioPlayer.Converter;
 using DrMarioPlayer.Model;
-using DrMarioPlayer.Utility;
 using HackathonClient;
 using Newtonsoft.Json;
 using Serilog;
@@ -10,7 +9,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace DrMarioPlayer
@@ -24,12 +22,13 @@ namespace DrMarioPlayer
         private static Pill previousPill;
         private static Pill currentPill;
         private static Pill nextPill;
-        private static bool firstRun = true;
         private static bool goodToGo = true;
+        private static bool testRun;
 
         private static async Task Main(string[] args)
         {
             InitializeLogger();
+            InitializeTestRun();
 
             socketConnection = await _client.ConnectToServer();
             if (!socketConnection.Connected)
@@ -47,6 +46,7 @@ namespace DrMarioPlayer
                     {
                         goodToGo = true;
                         Task.Run(() => UpdateGameState(message));
+                        Log.Information("Server message : " + message);
                     }
                 }
                 catch (Exception e)
@@ -66,7 +66,6 @@ namespace DrMarioPlayer
             if ((board[3, 13] != null && board[4, 13] != null) || IsNextPill())
             {
                 previousPill = currentPill;
-                Log.Information("Server message : " + message);
                 for (int row = 0; row < gameBoard.GetLength(0); row++)
                 {
                     for (int col = 0; col < gameBoard.GetLength(1); col++)
@@ -74,9 +73,9 @@ namespace DrMarioPlayer
                         Tile tile = TileConverter.Convert(board[row, col]);
                         if (tile != gameBoard[row, col])
                         {
-                            if (!IsSpawnPoint(row, col) && !firstRun)
+                            if (!IsSpawnPoint(row, col))
                             {
-                                Log.Information(gameBoard.LogGameBoard());
+                                Log.Information("Something went wrong");
                             }
 
                             gameBoard[row, col] = tile;
@@ -87,7 +86,6 @@ namespace DrMarioPlayer
 
                 try
                 {
-                    firstRun = false;
                     SearchForBestMove(currentPill, nextPill);
                 }
                 catch (Exception e)
@@ -136,8 +134,24 @@ namespace DrMarioPlayer
                     boardScores.TryAdd(board, score);
                 });
             }
+
+            var maxScore = boardScores.Values.Max();
+            var bestBoards = boardScores.Where(x => x.Value == maxScore);
+            var bestBoard = bestBoards.FirstOrDefault().Key;
             
-            var bestBoard = boardScores.Aggregate((x, y) => x.Value > y.Value ? x : y).Key;
+            if (bestBoards.Count() > 1)
+            {
+                var tempBoardScores = new ConcurrentDictionary<Tuple<Tile[,], Partner[,]>, double>();
+                Parallel.ForEach(bestBoards, (board) =>
+                {
+                    double score = Evaluator.Evaluate(board.Key.Item1);
+                    tempBoardScores.TryAdd(board.Key, score);
+                    Console.WriteLine(score);
+                });
+                
+                bestBoard = tempBoardScores.Aggregate((x, y) => x.Value > y.Value ? x : y).Key;
+            }
+
             var bestPill = firstPillGameBoards.Where(x => x.Value == bestBoard).FirstOrDefault().Key;
 
             gameBoard = bestBoard.Item1;
@@ -146,42 +160,42 @@ namespace DrMarioPlayer
             List<Move> moves = searcher.GetMoveSet(bestPill.Position.X, bestPill.Position.Y, bestPill.Orientation);
             string movesToBeSent = string.Empty;
             var simpMoves = new List<string>();
-            for (int i = moves.Count - 1; i >= 0; i--)
+            if (!testRun)
             {
-                switch (moves[i])
+                for (int i = moves.Count - 1; i >= 0; i--)
                 {
-                    case Move.DOWN: movesToBeSent += "D"; break;
-                    case Move.RIGHT: movesToBeSent += "R"; break;
-                    case Move.LEFT: movesToBeSent += "L"; break;
-                    case Move.ROTATE_90: movesToBeSent += "F"; break;
-                }
-
-                if (movesToBeSent.Length == 1 || i == 0)
-                {
-                    while (!goodToGo)
+                    switch (moves[i])
                     {
-                        Task.Delay(10).GetAwaiter().GetResult();
+                        case Move.DOWN: movesToBeSent += "D"; break;
+                        case Move.RIGHT: movesToBeSent += "R"; break;
+                        case Move.LEFT: movesToBeSent += "L"; break;
+                        case Move.ROTATE_90: movesToBeSent += "F"; break;
                     }
 
-                    int downMoves = movesToBeSent.Count(m => m == 'D');
-                    if (downMoves > 0)
+                    bool isLastMoveDown = movesToBeSent.Last() == 'D';
+                    if (isLastMoveDown || movesToBeSent.Length == 3 || i == 0)
                     {
+                        while (!goodToGo)
+                        {
+                            Task.Delay(10).GetAwaiter().GetResult();
+                        }
+
                         goodToGo = false;
-                    }
 
-                    _client.SendMessage(socketConnection, movesToBeSent);
-                    simpMoves.Add(movesToBeSent);
-                    
-                    if (downMoves == 0)
-                    {
-                        Task.Delay(30).GetAwaiter().GetResult();
+                        _client.SendMessage(socketConnection, movesToBeSent);
+                        simpMoves.Add(movesToBeSent);
+
+                        if (!isLastMoveDown)
+                        {
+                            Task.Delay(100).GetAwaiter().GetResult();
+                            goodToGo = true;
+                        }
+
+                        movesToBeSent = string.Empty;
                     }
-                    
-                    
-                    movesToBeSent = string.Empty;
                 }
             }
-
+            
             if (bestPill.Orientation == Orientation.HORIZONTAL)
             {
                 Console.WriteLine($"{Enum.GetName(typeof(Color), bestPill.Color1)} {Enum.GetName(typeof(Color), bestPill.Color2)}");
@@ -219,16 +233,47 @@ namespace DrMarioPlayer
         
         private static void InitializeLogger()
         {
-            if (File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log2.txt")))
+            if (File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log4.txt")))
             {
-                File.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log2.txt"));
+                File.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log4.txt"));
             }
 
             var log = new LoggerConfiguration().WriteTo.File(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log3.txt"))
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DrMario", "log4.txt"))
                 .CreateLogger();
 
             Log.Logger = log;
+        }
+
+        private static void InitializeTestRun()
+        {
+            try
+            {
+                string testMessage = "" +
+                    "{'Player':" +
+                        "{'Coordinates':[" +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,'Blue']," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,'Blue']," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]," +
+                            "[null,null,null,null,null,null,null,null,null,null,null,null,null,null]]," +
+                        "'Score':0," +
+                        "'Status':null," +
+                        "'VirusRemaining':20," +
+                        "'ActivePill':'BBPill'," +
+                        "'NextPill':'GYPill'}}";
+                testRun = true;
+                UpdateGameState(testMessage);
+                UpdateGameState(testMessage);
+                testRun = false;
+            }
+            catch (Exception e)
+            {
+                Log.Error(e.StackTrace);
+            }
         }
     }
 }
