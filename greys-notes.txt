@@ -1,0 +1,29 @@
+Evaluate function()
+- pinakanagca-calculate ng lahat. 
+- ito na ynug finals scoring mismo
+
+measureTiles()
+- ang ine-evaluate nito is whether pills or virus.. basta less tiles is better
+
+measureVirus
+- ang ine-evaluate dito is less virus is better
+makikita may 100 multiplier sa virusScore kasi naka-priority na maka-clear na ng virus
+
+measureChangeInColors() 
+- ang ginagawa naman nito is kung magkakatabi na color (horizontal or vvertical) mas better
+
+measureStackheight()
+- dito naman mas mababang height ng tiles mas better (regardless kung pill or virus)
+- minsan tinatanggal ko ito kasi gusto ko sa taas ng virus niya ilagay yung pill 
+
+measureVirusProximity()
+- ang ginagawa naman nito is mas closer yung color ng virus sa pill (horizontally and vertically) the better
+- minsan ito yung nagco-combo minsan ito yung nagc-clear
+- basta nagse-setup ng combo/clear
+
+measureBlockings()
+- ginagawa nito kapag may blocking na tile sa taas niya hindi ka-kulay less score binibigay
+
+measureHeight()
+- parang stackheight ito pero top 2 NG BOARD lang mine-measure hindi kasama yung baba
+- minsan pinampalit ko ito sa stackheight kasi diba nga kapag tumataas yung stackheight bumababa score
