@@ -1,19 +1,31 @@
-﻿using Greys.Converter;
-using Greys.Model;
-using Greys.Utility;
+﻿using DrMarioPlayer.Converter;
+using DrMarioPlayer.Model;
+using DrMarioPlayer.Utility;
 using System;
 
-namespace Greys
+namespace DrMarioPlayer
 {
     internal static class Evaluator
     {
+        private static readonly double CLEARED_SCORE = 999999.99;
+
         public static double Evaluate(Tile[,] gameBoard)
         {
-            return 100.00 * measureViruses(gameBoard)
+            double virusScore = measureViruses(gameBoard);
+            if (virusScore == CLEARED_SCORE)
+            {
+                return CLEARED_SCORE;
+            }
+            else
+            {
+                return 20.0 * virusScore
                 + measureTiles(gameBoard)
                 + measureStackHeight(gameBoard)
                 + measureChangeInColors(gameBoard)
-                + measureVirusProximity(gameBoard)*1.15;
+                + measureVirusProximity(gameBoard)
+                + measureBlockings(gameBoard);
+                //+ measureHeight(gameBoard);
+            }
         }
 
         private static double measureTiles(Tile[,] gameBoard)
@@ -49,7 +61,7 @@ namespace Greys
                 }
             }
 
-            return (totalArea - totalViruses) / totalArea;
+            return totalViruses == 0 ? CLEARED_SCORE : (totalArea - totalViruses) / totalArea;
         }
 
         private static double measureChangeInColors(Tile[,] gameBoard)
@@ -102,11 +114,16 @@ namespace Greys
                     {
                         if (col < Config.Environment.HEIGHT - 1)
                         {
-                            totalStackHeight += 16;
+                            totalStackHeight += 14;
                         }
                         totalStackHeight += Config.Environment.HEIGHT - col - 1;
                         break;
                     }
+                    else if (gameBoard[row, col] == Tile.NONE && col == 0)
+                    {
+                        totalStackHeight += 28;
+                    }
+
                 }
             }
 
@@ -136,7 +153,7 @@ namespace Greys
                                 if (scanTile != Tile.NONE)
                                 {
                                     Color scanTileColor = ColorConverter.Convert(scanTile).Value;
-                                    if (scanTileColor == virusColor)
+                                    if (scanTileColor == virusColor && Math.Abs(iRow-row) <= 3)
                                     {
                                         int dist = iRow - row;
                                         totalVirusProximity += (maxDistance - dist * dist) * Config.Environment.WIDTH;
@@ -180,10 +197,132 @@ namespace Greys
                 return 1.0;
             }
 
-            //return totalVirusProximity / (16000.0 * totalViruses);
-            return totalVirusProximity / (19840 * totalViruses);
+            return totalVirusProximity / (19840.0 * totalViruses);
+            //return totalVirusProximity / (18910.0 * totalViruses);
             //return totalVirusProximity / (17360.0 * totalViruses);
             //return totalVirusProximity / (19840.0 * totalViruses);
+        }
+
+        private static double measureBlockings(Tile[,] gameBoard)
+        {
+            double totalArea = (Config.Environment.HEIGHT * Config.Environment.WIDTH);
+            double totalBlockings = 0.0;
+            for (int row = 0; row < gameBoard.GetLength(0); row++)
+            {
+                for (int col = 0; col < gameBoard.GetLength(1); col++)
+                {
+                    Tile tile = gameBoard[row, col];
+                    if (TileHelper.IsVirus(tile))
+                    {
+                        Color lastColor = ColorConverter.Convert(tile).Value;
+                        int colorStreak = 0;
+                        for (int iCol = col + 1; iCol < Config.Environment.HEIGHT; iCol++)
+                        {
+                            Tile topTile = gameBoard[row, iCol];
+                            if (topTile != Tile.NONE)
+                            {
+                                if (TileHelper.IsVirus(topTile))
+                                {
+                                    break;
+                                }
+                                else
+                                {
+                                    Color topTileColor = ColorConverter.Convert(topTile).Value;
+                                    if (topTileColor != lastColor)
+                                    {
+                                        totalBlockings += 8;
+                                        lastColor = topTileColor;
+                                        totalBlockings -= 2 * colorStreak;
+                                        colorStreak = 0;
+                                    }
+                                    else
+                                    {
+                                        if (gameBoard[row, iCol - 1] == Tile.NONE && colorStreak > 0)
+                                        {
+                                            totalBlockings += 8;
+                                            colorStreak = 0;
+                                        }
+                                        else
+                                        {
+                                            colorStreak++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (colorStreak > 0 && colorStreak < 3)
+                        {
+                            totalBlockings -= 5 * colorStreak;
+                        }
+
+
+                        lastColor = ColorConverter.Convert(tile).Value;
+                        for (int iRow = row - 1; iRow >= 0 && Math.Abs(iRow - row) <= 3; iRow--)
+                        {
+                            Tile leftTile = gameBoard[iRow, col];
+                            if (leftTile != Tile.NONE)
+                            {
+                                if (TileHelper.IsVirus(leftTile))
+                                {
+                                    break;
+                                }
+                                else
+                                {
+                                    Color leftTileColor = ColorConverter.Convert(leftTile).Value;
+                                    if (leftTileColor != lastColor)
+                                    {
+                                        totalBlockings += 1;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        for (int iRow = row + 1; iRow < 8 && Math.Abs(iRow - row) <= 3; iRow++)
+                        {
+                            Tile rightTile = gameBoard[iRow, col];
+                            if (rightTile != Tile.NONE)
+                            {
+                                if (TileHelper.IsVirus(rightTile))
+                                {
+                                    break;
+                                }
+                                else
+                                {
+                                    Color rightTileColor = ColorConverter.Convert(rightTile).Value;
+                                    if (rightTileColor != lastColor)
+                                    {
+                                        totalBlockings += 1;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+
+                    }
+                }
+            }
+
+            return (totalArea - totalBlockings) / totalArea;
+        }
+
+        private static double measureHeight(Tile[,] gameBoard)
+        {
+            double totalHeight = 0.0;
+            for (int row = 0; row < gameBoard.GetLength(0); row++)
+            {
+                for (int col = Config.Environment.HEIGHT - 1; col > 10; col--)
+                {
+                    if (gameBoard[row, col] != Tile.NONE)
+                    {
+                        totalHeight += col - 10;
+                    }
+                }
+            }
+
+            return 40.0 - totalHeight / 40.0;
         }
     }
 }
